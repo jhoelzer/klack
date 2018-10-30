@@ -4,10 +4,10 @@ const port = process.env.PORT || 3000;
 const app = express();
 const mongoose = require("mongoose");
 
-const dbName = "klack";
+const dbName = "jh-klack";
 const dbUser = "jhoelzer";
-const dbPassword = "admin";
-const dbURI = "x";
+const dbPassword = "admin99";
+const dbURI = "ds147003.mlab.com:47003";
 
 // List of all messages
 let messages = [];
