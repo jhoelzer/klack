@@ -100,7 +100,7 @@ app.post("/messages", (request, response) => {
 });
 
 app.listen(port, () => {
-  mongoose.connect(`mongodb://${dbUser}:${dbPassword}@${dbURI}/${dbName}`),
-  { useNewUrlParser: true }
+  mongoose.connect(`mongodb://${dbUser}:${dbPassword}@${dbURI}/${dbName}`,
+  { useNewUrlParser: true })
   console.log("Listening on port " + port);
 });
