@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/KenzieAcademy/klack#readme",
   "dependencies": {
-    "express": "^4.16.3"
+    "express": "^4.16.4",
+    "mongoose": "^5.3.7"
   }
 }

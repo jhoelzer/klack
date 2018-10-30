@@ -1,10 +1,31 @@
 const express = require("express");
 const querystring = require("querystring");
-const port = 3000;
+const port = process.env.PORT || 3000;
 const app = express();
+const mongoose = require("mongoose");
+
+const dbName = "klack";
+const dbUser = "jhoelzer";
+const dbPassword = "admin";
+const dbURI = "x";
 
 // List of all messages
 let messages = [];
+
+const messageSchema = new mongoose.Schema ({
+  sender: String,
+  message: String,
+  timestamp: Number
+});
+
+const userData = mongoose.model("userData", messageSchema);
+
+userData.find((err, data) => {
+  if (err) return console.log(err);
+  for (let i = 0; i < data.length; i++) {
+    messages.push(data[i]);
+  }
+})
 
 // Track last active times for each sender
 let users = {};
@@ -56,15 +77,30 @@ app.post("/messages", (request, response) => {
   const timestamp = Date.now();
   request.body.timestamp = timestamp;
 
-  // append the new message to the message list
-  messages.push(request.body);
+  // // append the new message to the message list
+  // messages.push(request.body);
 
   // update the posting user's last access timestamp (so we know they are active)
   users[request.body.sender] = timestamp;
+
+  let newMessage = new userData ({
+    sender: request.body.sender,
+    message: request.body.message,
+    timestamp: request.body.timestamp
+  });
+
+  newMessage.save(function(err) {
+    if (err) return console.log(err);
+    console.log("Message saved");
+  })
 
   // Send back the successful response.
   response.status(201);
   response.send(request.body);
 });
 
-app.listen(3000);
+app.listen(port, () => {
+  mongoose.connect(`mongodb://${dbUser}:${dbPassword}@${dbURI}/${dbName}`),
+  { useNewUrlParser: true }
+  console.log("Listening on port " + port);
+});
