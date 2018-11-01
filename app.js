@@ -4,13 +4,35 @@ const port = process.env.PORT || 3000;
 const app = express();
 const mongoose = require("mongoose");
 
-const dbName = "jh-klack";
-const dbUser = "jhoelzer";
-const dbPassword = "admin99";
-const dbURI = "ds147003.mlab.com:47003";
+// const dbName = "jh-klack";
+// const dbUser = "jhoelzer";
+// const dbPassword = "admin99";
+// const dbURI = "ds147003.mlab.com:47003";
+// mongodb://jhoelzer:admin99@ds147003.mlab.com:47003/jh-klack
+
+const connectionString = process.env.CONNECTION_STRING || "mongodb://localhost:21017/klack-heroku"
 
 // List of all messages
-let messages = [];
+// let messages = [];
+
+
+// Track last active times for each sender
+let users = {};
+
+app.use(express.static("./public"));
+app.use(express.json());
+
+const database = mongoose.connection;
+
+database.on("error", console.error.bind(console, "Error with database connection: "));
+database.once("open", function () {
+  console.log("Connected successfully");
+});
+
+const userSchema = new mongoose.Schema ({
+  user: String,
+  lastActive: String
+});
 
 const messageSchema = new mongoose.Schema ({
   sender: String,
@@ -18,20 +40,13 @@ const messageSchema = new mongoose.Schema ({
   timestamp: Number
 });
 
-const userData = mongoose.model("userData", messageSchema);
+const Message = mongoose.model("Message", messageSchema);
 
-userData.find((err, data) => {
-  if (err) return console.log(err);
-  for (let i = 0; i < data.length; i++) {
-    messages.push(data[i]);
-  }
-})
+Message.find({})
+  .then(messages => {
+    messages.forEach(message => users[message.sender] = message.timestamp)
+});
 
-// Track last active times for each sender
-let users = {};
-
-app.use(express.static("./public"));
-app.use(express.json());
 
 // generic comparison function for case-insensitive alphabetic sorting on the name field
 function userSortFn(a, b) {
@@ -56,7 +71,7 @@ app.get("/messages", (request, response) => {
   const requireActiveSince = now - 15 * 1000;
 
   // create a new list of users with a flag indicating whether they have been active recently
-  usersSimple = Object.keys(users).map(x => ({
+  let usersSimple = Object.keys(users).map(x => ({ // Object.keys returns array of property names(?)
     name: x,
     active: users[x] > requireActiveSince
   }));
@@ -69,7 +84,13 @@ app.get("/messages", (request, response) => {
   users[request.query.for] = now;
 
   // send the latest 40 messages and the full user list, annotated with active flags
-  response.send({ messages: messages.slice(-40), users: usersSimple });
+  Message.find({})
+    .then(messages => 
+      response.send({
+        messages: messages.slice(-40),
+        users: usersSimple
+      }))
+    .catch(err => console.log(err));
 });
 
 app.post("/messages", (request, response) => {
@@ -83,24 +104,25 @@ app.post("/messages", (request, response) => {
   // update the posting user's last access timestamp (so we know they are active)
   users[request.body.sender] = timestamp;
 
-  let newMessage = new userData ({
-    sender: request.body.sender,
-    message: request.body.message,
-    timestamp: request.body.timestamp
-  });
-
-  newMessage.save(function(err) {
-    if (err) return console.log(err);
-    console.log("Message saved");
-  })
-
-  // Send back the successful response.
-  response.status(201);
-  response.send(request.body);
+  Message.create({
+      sender: request.body.sender,
+      message: request.body.message,
+      timestamp: request.body.timestamp
+  },
+    (err, newMessage) => {
+      if (err !== null) {
+        response.status(500);
+        response.send(err);
+        return
+      }
+      response.status(201);
+      response.send(request.body);
+    });
 });
 
 app.listen(port, () => {
-  mongoose.connect(`mongodb://${dbUser}:${dbPassword}@${dbURI}/${dbName}`,
+  mongoose.connect(connectionString,
+  // mongoose.connect(`mongodb://${dbUser}:${dbPassword}@${dbURI}/${dbName}`,
   { useNewUrlParser: true })
   console.log("Listening on port " + port);
 });
