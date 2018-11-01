@@ -2,19 +2,9 @@ const express = require("express");
 const querystring = require("querystring");
 const port = process.env.PORT || 3000;
 const app = express();
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-// const dbName = "jh-klack";
-// const dbUser = "jhoelzer";
-// const dbPassword = "admin99";
-// const dbURI = "ds147003.mlab.com:47003";
-// mongodb://jhoelzer:admin99@ds147003.mlab.com:47003/jh-klack
-
-const connectionString = process.env.CONNECTION_STRING || "mongodb://localhost:21017/klack-heroku"
-
-// List of all messages
-// let messages = [];
-
+const connectionString = process.env.CONNECTION_STRING || 'mongodb://localhost:27017/klack';
 
 // Track last active times for each sender
 let users = {};
@@ -22,107 +12,98 @@ let users = {};
 app.use(express.static("./public"));
 app.use(express.json());
 
-const database = mongoose.connection;
+const db = mongoose.connection;
 
-database.on("error", console.error.bind(console, "Error with database connection: "));
-database.once("open", function () {
-  console.log("Connected successfully");
-});
+db.on('error', console.error.bind(console, 'Connection error with database:'));
+db.once('open', function () {
+  console.log("Connected successfully")
+  
+  const userSchema = new mongoose.Schema({
+    user: String,
+    lastActive: String
+  })
 
-const userSchema = new mongoose.Schema ({
-  user: String,
-  lastActive: String
-});
+  const messageSchema = new mongoose.Schema({
+    sender: String,
+    message: String,
+    timestamp: Number
+  })
 
-const messageSchema = new mongoose.Schema ({
-  sender: String,
-  message: String,
-  timestamp: Number
-});
-
-const Message = mongoose.model("Message", messageSchema);
-
-Message.find({})
-  .then(messages => {
+  const Message = mongoose.model('Message', messageSchema);
+  // const User = mongoose.model('User', userSchema);
+  Message.find({}).then(messages => {
     messages.forEach(message => users[message.sender] = message.timestamp)
-});
+  })
 
-
-// generic comparison function for case-insensitive alphabetic sorting on the name field
-function userSortFn(a, b) {
-  var nameA = a.name.toUpperCase(); // ignore upper and lowercase
-  var nameB = b.name.toUpperCase(); // ignore upper and lowercase
-  if (nameA < nameB) {
-    return -1;
+  // generic comparison function for case-insensitive alphabetic sorting on the name field
+  function userSortFn(a, b) {
+    var nameA = a.name.toUpperCase(); // ignore upper and lowercase
+    var nameB = b.name.toUpperCase(); // ignore upper and lowercase
+    if (nameA < nameB) {
+      return -1;
+    }
+    if (nameA > nameB) {
+      return 1;
+    }
+    // names must be equal
+    return 0;
   }
-  if (nameA > nameB) {
-    return 1;
-  }
 
-  // names must be equal
-  return 0;
-}
+  app.get("/messages", (request, response) => {
+    // get the current time
+    const now = Date.now();
 
-app.get("/messages", (request, response) => {
-  // get the current time
-  const now = Date.now();
+    // consider users active if they have connected (GET or POST) in last 15 seconds
+    const requireActiveSince = now - 15 * 1000;
 
-  // consider users active if they have connected (GET or POST) in last 15 seconds
-  const requireActiveSince = now - 15 * 1000;
+    // create a new list of users with a flag indicating whether they have been active recently
+    let usersSimple = Object.keys(users).map(x => ({
+      name: x,
+      active: users[x] > requireActiveSince
+    }));
 
-  // create a new list of users with a flag indicating whether they have been active recently
-  let usersSimple = Object.keys(users).map(x => ({ // Object.keys returns array of property names(?)
-    name: x,
-    active: users[x] > requireActiveSince
-  }));
+    // sort the list of users alphabetically by name
+    usersSimple.sort(userSortFn);
 
-  // sort the list of users alphabetically by name
-  usersSimple.sort(userSortFn);
-  usersSimple.filter(a => a.name !== request.query.for);
+    // update the requesting user's last access time
+    users[request.query.for] = now;
 
-  // update the requesting user's last access time
-  users[request.query.for] = now;
-
-  // send the latest 40 messages and the full user list, annotated with active flags
-  Message.find({})
-    .then(messages => 
+    // send the latest 40 messages and the full user list, annotated with active flags
+    Message.find({}).then(messages =>
       response.send({
         messages: messages.slice(-40),
         users: usersSimple
-      }))
-    .catch(err => console.log(err));
+      })).catch(err => console.log(err));
+  });
+
+  app.post("/messages", (request, response) => {
+    // add a timestamp to each incoming message.
+    const timestamp = Date.now();
+    request.body.timestamp = timestamp;
+
+    users[request.body.sender] = timestamp;
+
+    Message.create({
+        sender: request.body.sender,
+        message: request.body.message,
+        timestamp: request.body.timestamp
+      },
+      (err, newMessage) => {
+        // Send back the successful response.
+        if (err !== null) {
+          response.status(500)
+          response.send(err)
+          return
+        }
+        response.status(201);
+        response.send(request.body);
+
+      })
+  });
+
 });
-
-app.post("/messages", (request, response) => {
-  // add a timestamp to each incoming message.
-  const timestamp = Date.now();
-  request.body.timestamp = timestamp;
-
-  // // append the new message to the message list
-  // messages.push(request.body);
-
-  // update the posting user's last access timestamp (so we know they are active)
-  users[request.body.sender] = timestamp;
-
-  Message.create({
-      sender: request.body.sender,
-      message: request.body.message,
-      timestamp: request.body.timestamp
-  },
-    (err, newMessage) => {
-      if (err !== null) {
-        response.status(500);
-        response.send(err);
-        return
-      }
-      response.status(201);
-      response.send(request.body);
-    });
-});
-
 app.listen(port, () => {
-  mongoose.connect(connectionString,
-  // mongoose.connect(`mongodb://${dbUser}:${dbPassword}@${dbURI}/${dbName}`,
-  { useNewUrlParser: true })
-  console.log("Listening on port " + port);
+  mongoose.connect(connectionString)
+  // mongoose.connect(`mongodb://${DBUser}:${DBPassword}@${DBURI}/${DBName}`)
+  console.log('Listening on port ' + port)
 });

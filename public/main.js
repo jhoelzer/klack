@@ -79,7 +79,6 @@ textarea.addEventListener("keypress", event => {
       },
       body: JSON.stringify({ sender: name, message: textarea.value })
     };
-    
     fetch("/messages", postRequestOptions)
       .then(response => response.json())
       .then(msg => {
