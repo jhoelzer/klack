@@ -102,6 +102,7 @@ db.once('open', function () {
   });
 
 });
+
 app.listen(port, () => {
   mongoose.connect(connectionString)
   // mongoose.connect(`mongodb://${DBUser}:${DBPassword}@${DBURI}/${DBName}`)
